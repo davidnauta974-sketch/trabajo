@@ -1,0 +1,9 @@
+services:
+  web:
+    image: example/web:training
+    user: "0:0"
+    privileged: true
+    environment:
+      API_TOKEN: "EJEMPLO_FICTICIO_NO_USAR"
+    ports:
+      - "80:80"

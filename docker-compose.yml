@@ -1,0 +1,23 @@
+services:
+  web:
+    build: .
+    image: webapp-policy-lab:local
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.5
+    environment:
+      APP_ADDR: ":8080"
+      API_KEY_FILE: /run/secrets/api_key
+    ports:
+      - "127.0.0.1:8080:8080"
+    secrets:
+      - api_key
+    restart: "no"
+
+secrets:
+  api_key:
+    file: ./.secrets/api_key

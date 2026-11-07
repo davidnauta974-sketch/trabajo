@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+.secrets
+artifacts
+fixtures
+policy
+scripts
+*.exe
+*.tar

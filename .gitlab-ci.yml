@@ -1,0 +1,80 @@
+stages:
+  - verify
+  - policy
+  - build
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+
+default:
+  interruptible: true
+  timeout: 15m
+
+verify:backend:
+  stage: verify
+  image: golang:1.27.3-alpine
+  script:
+    - cd backend
+    - go vet ./...
+    - go test -v ./...
+    - go build ./...
+
+verify:policy-compose:
+  stage: verify
+  image:
+    name: openpolicyagent/conftest:v0.71.1
+    entrypoint: [""]
+  script:
+    - conftest verify --policy policy/compose --no-color
+
+verify:policy-dockerfile:
+  stage: verify
+  image:
+    name: openpolicyagent/conftest:v0.71.1
+    entrypoint: [""]
+  script:
+    - conftest verify --policy policy/dockerfile --no-color
+
+policy:gate:
+  stage: policy
+  image:
+    name: openpolicyagent/conftest:v0.71.1
+    entrypoint: [""]
+  allow_failure: false
+  script:
+    - conftest test Dockerfile --policy policy/dockerfile --no-color
+    - conftest test docker-compose.yml --policy policy/compose --no-color
+  # No needs: later stages wait for all verification and policy jobs.
+
+build:publish:
+  stage: build
+  image:
+    name: moby/buildkit:v0.34.2-rootless
+    entrypoint: [""]
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"'
+  before_script:
+    - umask 077
+    - mkdir -p "$HOME/.docker"
+    - |
+      printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' \
+        "$CI_REGISTRY" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" > "$HOME/.docker/config.json"
+  script:
+    - |
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --metadata-file build-metadata.json \
+        --output "type=image,name=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA,push=true"
+  after_script:
+    - rm -f "$HOME/.docker/config.json"
+  artifacts:
+    paths: [build-metadata.json]
+    expire_in: 7 days
